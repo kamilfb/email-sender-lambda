@@ -30,6 +30,8 @@ exports.handler = async (event, context, callback) => {
     const emailText = body["text"];
     
     // Attachments
+    const emailEncodedAttachment = body["encodedAttachment"];
+    const emailAttachmentName = body["attachmentName"];
     const emailAttachments = body["attachments"];
     
     // Reply-to (optional)
@@ -125,6 +127,12 @@ exports.handler = async (event, context, callback) => {
                     filename: emailAttachment["attachmentName"],
                     content: Buffer.from(emailAttachment["encodedAttachment"], 'base64')
                 });
+            });
+        } else if (typeof emailAttachmentName !== 'undefined' && typeof emailEncodedAttachment !== 'undefined')
+        {
+            attachments.push({
+                filename: emailAttachmentName,
+                content: Buffer.from(emailEncodedAttachment, 'base64')
             });
         }
         
