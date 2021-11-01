@@ -1,7 +1,12 @@
 const AWS = require('aws-sdk');
 
+// Use Secret Manager for getting the email credentials
 // const secretsManager = new AWS.SecretsManager({region: "eu-west-2"});
+
+// Use SSM Parameter Store for getting the email credentials
 const ssm = new AWS.SSM({region: "eu-west-2"});
+
+// Used for email auditing
 const s3 = new AWS.S3({region: "eu-west-2"});
 
 exports.handler = async (event, context, callback) => {
@@ -12,17 +17,28 @@ exports.handler = async (event, context, callback) => {
     var body = event.body;
     console.log("Body = " + JSON.stringify(body));
     
+    // The name of the parameter to fetch from Secret Manager or SSM Parameter Store
     const emailSecretName = body["secretName"];
+    
+    // The 'to' name and address: 'name <email>'' or just 'email'
     const emailAddressTo = body["toAddress"];
+    
+    // Email title
     const emailTitle = body["title"];
+    
+    // Email body (in HTML)
     const emailText = body["text"];
-    const emailEncodedAttachment = body["encodedAttachment"];
-    const emailAttachmentName = body["attachmentName"];
+    
+    // Attachments
+    const emailAttachments = body["attachments"];
+    
+    // Reply-to (optional)
+    const emailReplyTo = body["replyTo"];
 
-    const useTestEmail = emailSecretName == "test";
+    const useTestEmail = emailSecretName == "test" || (process.env.TEST_EMAILS_ONLY == "true");
     const auditBucket = process.env.AUDIT_BUCKET;
     var auditMode;
-    var attachments;
+    var attachments = [];
 
     "use strict";
     const nodemailer = require("nodemailer");
@@ -101,18 +117,17 @@ exports.handler = async (event, context, callback) => {
             fromAddress = '"' + emailSecret["displayName"] + '" <' + emailSecret["username"] + '>';
         }
         
-        if (typeof emailAttachmentName === 'undefined')
+        // Adding all attachments
+        if (typeof emailAttachments !== 'undefined')
         {
-          attachments = [];
+            emailAttachments.forEach(function(emailAttachment){
+                attachments.push({
+                    filename: emailAttachment["attachmentName"],
+                    content: Buffer.from(emailAttachment["encodedAttachment"], 'base64')
+                });
+            });
         }
-        else
-        {
-          attachments = [{
-                filename: emailAttachmentName,
-                content: Buffer.from(emailEncodedAttachment, 'base64')
-            }]
-        }
-    
+        
         // console.log("Sending mail to " + emailAddressTo);
         
         const emailContent = {
@@ -120,7 +135,8 @@ exports.handler = async (event, context, callback) => {
             to: emailAddressTo,
             subject: emailTitle, 
             html: emailText,
-            attachments: attachments
+            attachments: attachments,
+            replyTo: emailReplyTo
         };
         if (auditMode == "bcc")
         {
